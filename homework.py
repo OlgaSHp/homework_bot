@@ -192,7 +192,7 @@ def main():
 
 if __name__ == "__main__":
     logging.basicConfig(
-        format="%(asctime)s, %(message)s, %(lineno)d, %(name)s",
+        format="%(asctime)s, %(levelname)s, %(message)s, %(lineno)d, %(name)s",
         encoding="utf-8",
         filemode="w",
         filename="homework.log",
