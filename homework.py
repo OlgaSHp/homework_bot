@@ -6,6 +6,7 @@ Telegram-бот обращается к API сервиса Практикум.Д
 Ошибки логгирует.
 """
 
+import http
 import logging
 import os
 import time
@@ -13,44 +14,13 @@ import time
 import requests
 import telegram
 from dotenv import load_dotenv
+from telegram.error import TelegramError
+
+from exceptions import (DataTypeError, EndpointFailure, GlobalVariableError,
+                        HttpStatusOkResponseError, MessageDeliveryError,
+                        MissingErrorInformationAndNonOkStatus, ServiceFailure)
 
 load_dotenv()
-
-
-class MessageDeliveryError(Exception):
-    """Ошибка при отправки сообщения."""
-
-    pass
-
-
-class ServiceFailure(Exception):
-    """Ошибка доступа к определенному эндпойнту."""
-
-    pass
-
-
-class DataTypeError(Exception):
-    """Ошибка, если тип данных не словарь."""
-
-    pass
-
-
-class EndpointFailure(Exception):
-    """Ошибка, если эндпоинт неправильный или не существует."""
-
-    pass
-
-
-class ResponseFormatError(Exception):
-    """Ошибка, если формат ответа не JSON."""
-
-    pass
-
-
-class GlobalVariableError(Exception):
-    """Ошибка, если глобальная переменная пуста или не отсутствует."""
-
-    pass
 
 
 PRACTICUM_TOKEN = os.getenv("PRACTICUM_TOKEN")
@@ -60,6 +30,8 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 RETRY_PERIOD = 600
 ENDPOINT = "https://practicum.yandex.ru/api/user_api/homework_statuses/"
 HEADERS = {"Authorization": f"OAuth {PRACTICUM_TOKEN}"}
+TOKEN_NAMES = ("PRACTICUM_TOKEN", "TELEGRAM_TOKEN",
+               "TELEGRAM_CHAT_ID", "ENDPOINT")
 
 HOMEWORK_VERDICTS = {
     "approved": "Работа проверена: ревьюеру всё понравилось. Ура!",
@@ -72,13 +44,13 @@ def send_message(bot, message):
     """Отправляет сообщение пользователю в Telegram чат."""
     try:
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
-    except Exception as error:
-        logging.error(
+    except TelegramError as error:
+        logging.exception(
             f"Ошибка отправки сообщения в Telegram: {error}. "
             f"Сообщение: {message}"
         )
         raise MessageDeliveryError(f"{error}, {message}")
-    logging.debug(f'Сообщение "{message}" отослано')
+    logging.debug(f'Сообщение "{message}" отослано', exc_info=True)
 
 
 def get_api_answer(current_timestamp):
@@ -100,14 +72,24 @@ def get_api_answer(current_timestamp):
             f"{error}, url={ENDPOINT}, headers={HEADERS}, params={time_params}"
         )
     response_status = response.status_code
-    if response_status != 200:
-        raise EndpointFailure(
-            f"{response_status}",
-            f"url={ENDPOINT}",
-            f"headers={HEADERS}",
-            f"params={time_params}"
+    if response_status != http.HTTPStatus.OK:
+        error_msg = f"Ошибка доступа к эндпойнту: статус {response_status}\n"
+        error_msg += f"URL: {ENDPOINT}\n"
+        error_msg += f"Headers: {HEADERS}\n"
+        error_msg += f"Params: {time_params}\n"
+        raise EndpointFailure(error_msg)
+    # Проверка на наличие ошибки при получение ответа с сервера
+    response_json = response.json()
+    # Обращаемся к ключам response_json и приводим их к типу set
+    if set(response_json.keys()) == {'error', 'code'}:
+        error_msg = f"Ошибка {response_json['code']}: {response_json['error']}"
+        raise HttpStatusOkResponseError(error_msg)
+    elif response.status_code != http.HTTPStatus.OK:
+        raise MissingErrorInformationAndNonOkStatus(
+            'Ошибок нет, получен статус ответа,'
+            'отличный от HTTPStatus.OK'
         )
-    return response.json()
+    return response_json
 
 
 def check_response(response):
@@ -130,8 +112,7 @@ def check_response(response):
     # вернуть первый элемент списка
     if response["homeworks"]:
         return response["homeworks"][0]
-    else:
-        raise IndexError("Пустой список")
+    raise IndexError("Пустой список")
 
 
 def parse_status(homework):
@@ -153,12 +134,9 @@ def parse_status(homework):
 
 def check_tokens():
     """Проверяет доступность переменных окружения."""
-    for key in (PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, ENDPOINT):
-        if key is None:
-            logging.critical("Отсутствует глобальная переменная")
-            return False
-        if not key:
-            logging.critical("Пустая глобальная переменная")
+    for name in TOKEN_NAMES:
+        if not globals()[name]:
+            logging.critical(f"Глобальная переменная {name} отсутствует")
             return False
     return True
 
