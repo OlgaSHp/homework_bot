@@ -99,7 +99,7 @@ def get_api_answer(current_timestamp):
         raise MissingErrorInformationAndNonOkStatus(
             'Ошибок нет, получен статус ответа,'
             'отличный от HTTPStatus.OK', http.HTTPStatus.BAD_REQUEST
-        )
+            )
     return response_json
 
 
