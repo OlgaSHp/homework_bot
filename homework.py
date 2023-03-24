@@ -94,12 +94,12 @@ def get_api_answer(current_timestamp):
         error_msg = f"Ошибка {response_json['code']}: {response_json['error']}"
         raise HttpStatusOkResponseError(
             error_msg, http.HTTPStatus.INTERNAL_SERVER_ERROR
-            )
+        )
     elif response.status_code != http.HTTPStatus.OK:
         raise MissingErrorInformationAndNonOkStatus(
             'Ошибок нет, получен статус ответа,'
             'отличный от HTTPStatus.OK', http.HTTPStatus.BAD_REQUEST
-            )
+        )
     return response_json
 
 
