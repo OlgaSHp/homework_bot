@@ -16,9 +16,12 @@ import telegram
 from dotenv import load_dotenv
 from telegram.error import TelegramError
 
-from exceptions import (DataTypeError, EndpointFailure, GlobalVariableError,
-                        HttpStatusOkResponseError, MessageDeliveryError,
-                        MissingErrorInformationAndNonOkStatus, ServiceFailure)
+from exceptions import (
+    DataTypeError, EndpointFailure, GlobalVariableError,
+    HttpStatusOkResponseError, MessageDeliveryError,
+    MissingErrorInformationAndNonOkStatus, ServiceFailure,
+    APIConnectionError
+)
 
 load_dotenv()
 
@@ -49,7 +52,8 @@ def send_message(bot, message):
             f"Ошибка отправки сообщения в Telegram: {error}. "
             f"Сообщение: {message}"
         )
-        raise MessageDeliveryError(f"{error}, {message}")
+        raise MessageDeliveryError(f"{error}, {message}",
+                                   http.HTTPStatus.INTERNAL_SERVER_ERROR)
     logging.debug(f'Сообщение "{message}" отослано', exc_info=True)
 
 
@@ -68,26 +72,33 @@ def get_api_answer(current_timestamp):
         # Запрос к API
         response = requests.get(**request_params)
     except requests.exceptions.RequestException as error:
-        raise telegram.TelegramError(
-            f"{error}, url={ENDPOINT}, headers={HEADERS}, params={time_params}"
+        raise APIConnectionError(
+            f"{error}, url={ENDPOINT}",
+            f"headers={HEADERS}",
+            f"params={time_params}",
+            http.HTTPStatus.SERVICE_UNAVAILABLE
         )
     response_status = response.status_code
     if response_status != http.HTTPStatus.OK:
-        error_msg = f"Ошибка доступа к эндпойнту: статус {response_status}\n"
-        error_msg += f"URL: {ENDPOINT}\n"
-        error_msg += f"Headers: {HEADERS}\n"
-        error_msg += f"Params: {time_params}\n"
+        error_msg = (
+            f"Ошибка доступа к эндпойнту: статус {response_status}\n"
+            f"URL: {ENDPOINT}\n"
+            f"Headers: {HEADERS}\n"
+            f"Params: {time_params}\n"
+        )
         raise EndpointFailure(error_msg)
     # Проверка на наличие ошибки при получение ответа с сервера
     response_json = response.json()
     # Обращаемся к ключам response_json и приводим их к типу set
     if set(response_json.keys()) == {'error', 'code'}:
         error_msg = f"Ошибка {response_json['code']}: {response_json['error']}"
-        raise HttpStatusOkResponseError(error_msg)
+        raise HttpStatusOkResponseError(
+            error_msg, http.HTTPStatus.INTERNAL_SERVER_ERROR
+            )
     elif response.status_code != http.HTTPStatus.OK:
         raise MissingErrorInformationAndNonOkStatus(
             'Ошибок нет, получен статус ответа,'
-            'отличный от HTTPStatus.OK'
+            'отличный от HTTPStatus.OK', http.HTTPStatus.BAD_REQUEST
         )
     return response_json
 
@@ -104,7 +115,7 @@ def check_response(response):
     if "code" in response:
         code = response.get("code")
         raise ServiceFailure(
-            f"{code}",
+            f"{code}", http.HTTPStatus.INTERNAL_SERVER_ERROR
         )
     if not isinstance(response.get("homeworks"), list):
         raise TypeError("Данные не в виде списка")
@@ -118,7 +129,8 @@ def check_response(response):
 def parse_status(homework):
     """Извлекает из информации о домашней работе статус этой работы."""
     if not isinstance(homework, dict):
-        raise DataTypeError(f"Неверный тип данных {type}, вместо словаря")
+        raise DataTypeError(f"Неверный тип данных {type}, вместо словаря",
+                            http.HTTPStatus.BAD_REQUEST)
 
     if "homework_name" not in homework:
         raise KeyError("Ответ API не содержит ключ 'homework_name'.")
@@ -144,7 +156,8 @@ def check_tokens():
 def main():
     """Основная логика работы программы."""
     if not check_tokens():
-        raise GlobalVariableError("Ошибка глобальной переменной")
+        raise GlobalVariableError("Ошибка глобальной переменной",
+                                  http.HTTPStatus.INTERNAL_SERVER_ERROR)
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
 

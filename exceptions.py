@@ -1,19 +1,32 @@
 """Кастомные классы ошибок."""
 
 
-class MessageDeliveryError(Exception):
+class BaseError(Exception):
+    """Базовый класс-исключение."""
+
+    def __init__(self, msg, code):
+        """
+        msg: Сообщение об ошибке.
+
+        code: HTTP статус ошибки.
+        """
+        self.msg = msg
+        self.code = code
+
+
+class MessageDeliveryError(BaseError):
     """Ошибка при отправки сообщения."""
 
     pass
 
 
-class ServiceFailure(Exception):
+class ServiceFailure(BaseError):
     """Ошибка доступа к определенному эндпойнту."""
 
     pass
 
 
-class DataTypeError(Exception):
+class DataTypeError(BaseError):
     """Ошибка, если тип данных не словарь."""
 
     pass
@@ -25,25 +38,25 @@ class EndpointFailure(Exception):
     pass
 
 
-class ResponseFormatError(Exception):
-    """Ошибка, если формат ответа не JSON."""
-
-    pass
-
-
-class GlobalVariableError(Exception):
+class GlobalVariableError(BaseError):
     """Ошибка, если глобальная переменная пуста или не отсутствует."""
 
     pass
 
 
-class HttpStatusOkResponseError(Exception):
+class HttpStatusOkResponseError(BaseError):
     """Ошибка, если HTTP-ответ не 200."""
 
     pass
 
 
-class MissingErrorInformationAndNonOkStatus(Exception):
+class MissingErrorInformationAndNonOkStatus(BaseError):
     """Информации об ошибке нет, но статус всё равно не 200."""
+
+    pass
+
+
+class APIConnectionError(BaseError):
+    """Ошибка связи с API."""
 
     pass
